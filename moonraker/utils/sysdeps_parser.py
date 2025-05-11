@@ -148,8 +148,36 @@ class SysDepsParser:
                 "Failed to detect current distro ID, cannot parse dependencies"
             )
             return []
-        all_ids = [self.distro_id] + self.aliases
-        for distro_id in all_ids:
+        
+        # Map common distribution names to their possible aliases
+        common_distro_aliases = {
+            "arch": ["archlinux", "bredos"],
+            "debian": ["ubuntu", "pop", "mint"],
+            "fedora": ["rhel", "centos"]
+        }
+        
+        # Create a list of distribution IDs to check, starting with the detected one
+        check_ids = [self.distro_id]
+        
+        # Add explicit aliases from os-release
+        check_ids.extend(self.aliases)
+        
+        # Add known common aliases for this distro
+        for distro, aliases in common_distro_aliases.items():
+            if self.distro_id == distro:
+                for alias in aliases:
+                    if alias not in check_ids:
+                        check_ids.append(alias)
+            elif self.distro_id in aliases:
+                if distro not in check_ids:
+                    check_ids.append(distro)
+        
+        # Add generic fallbacks at the end
+        for generic_id in ["linux", "generic"]:
+            if generic_id not in check_ids:
+                check_ids.append(generic_id)
+        
+        for distro_id in check_ids:
             if distro_id in sys_deps:
                 if not sys_deps[distro_id]:
                     logging.info(
@@ -162,10 +190,12 @@ class SysDepsParser:
                     parsed_dep = self._parse_spec(dep)
                     if parsed_dep is not None:
                         processed_deps.append(parsed_dep)
-                return processed_deps
-        else:
-            logging.info(
-                f"Dependency data has no package definition for linux "
-                f"distro '{self.distro_id}'"
-            )
+                if processed_deps:
+                    logging.info(f"Using system dependencies for '{distro_id}'")
+                    return processed_deps
+        
+        logging.info(
+            f"Dependency data has no package definition for linux "
+            f"distro '{self.distro_id}' or any of its known aliases"
+        )
         return []
